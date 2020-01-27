@@ -40,12 +40,13 @@ class Neuron:
 
     def calculate(self, inputs):
 
-        assert(len(inputs) == len(self.weights))
+        # assert(len(inputs) == len(self.weights))
 
-        net = np.dot(inputs, self.weights) + self.bias
-        out = self.activate(net)
+        net = np.dot(inputs, self.weights) + self.bias  # net = w^T * x + b
+        out = self.activate(net)  # out = phi(net)
 
-        self.d_out_d_net = self.activate_derivative(net)
+        # For use in backpropagation
+        self.d_out_d_net = self.activate_derivative(net)  # activation function derivative
 
         return out
 
@@ -105,7 +106,8 @@ class NeuralNetwork:
 
         self.num_outputs = parameters['num outputs']
 
-        # Make sure the number of chosen activation functions is equal to the number of hidden layers + 1 (for the output layer)
+        # Make sure the number of chosen activation functions is equal to the number of hidden layers + 1
+        # (for the output layer)
         assert(len(parameters['activations']) == (parameters['num hidden layers'] + 1))
 
         self.activations = parameters['activations']
@@ -116,7 +118,7 @@ class NeuralNetwork:
         # Initialize layers and weights
         self.layers = [None] * (self.num_hidden_layers + 1)
 
-        # Input and Hidden layers
+        # Create input and hidden layers
         for l in range(0, self.num_hidden_layers):
 
             # Input
@@ -138,7 +140,7 @@ class NeuralNetwork:
         cur_inputs = input
 
         for layer in range(0, len(self.layers)):
-            cur_outputs = self.layers[layer].calculate(cur_inputs)
+            cur_outputs = self.layers[layer].calculate(cur_inputs)  # Recursively compute the network outputs
             cur_inputs = cur_outputs
 
         return cur_outputs
@@ -151,7 +153,7 @@ class NeuralNetwork:
             return self.loss
 
         elif self.loss_function == "binary cross entropy":
-            self.loss = np.sum(actual_output * np.log(desired_output) + (1 - actual_output) * np.log(1 - desired_output))
+            self.loss = -(np.sum(desired_output * np.log(actual_output) + (1 - desired_output) * np.log(1 - actual_output)))
             return self.loss
 
     def loss_derivative(self, desired_output, actual_output):
@@ -161,7 +163,8 @@ class NeuralNetwork:
             return self.loss_deriv
 
         elif self.loss_function == "binary cross entropy":
-            self.loss_deriv = np.sum(-(actual_output / desired_output) + ((1 - actual_output)/(1 - desired_output)))
+            self.loss_deriv = np.sum(-(desired_output / actual_output) + ((1 - desired_output)/(1 - actual_output)))
+            return self.loss_deriv
 
     def update_weights(self, deltas, input):
 
@@ -173,56 +176,54 @@ class NeuralNetwork:
             # Iterate through each neuron to update its input weights
             for neur in range(0, len(self.layers[layer].neurons)):
 
-                if layer != (num_total_layers - 1):
+                if layer != (num_total_layers - 1):  # If the current layer is NOT the output layer!
                     delta = deltas[neur, layer]
 
-                else:
+                else:  # Else the current layer is the output layer
                     delta = self.out_deltas[neur]
 
-                if layer == 0:
+                if layer == 0:  # If the current layer is the first hidden layer
 
-                    self.layers[layer].neurons[neur].weights -= self.learning_rate * (delta * input)  # Weights
-                    self.layers[layer].neurons[neur].bias -= self.learning_rate * (delta * 1)
+                    self.layers[layer].neurons[neur].weights -= (self.learning_rate * (delta * input))  # Weights
+                    self.layers[layer].neurons[neur].bias -= (self.learning_rate * (delta * 1))
 
                 else:
                     outs = self.layers[layer - 1].layer_out
 
-                    self.layers[layer].neurons[neur].weights -= self.learning_rate * (delta * outs)
-                    self.layers[layer].neurons[neur].weights -= self.learning_rate * (delta * 1)
+                    self.layers[layer].neurons[neur].weights -= (self.learning_rate * (delta * outs))
+                    self.layers[layer].neurons[neur].weights -= (self.learning_rate * (delta * 1))
 
     # One iteration of gradient descent
     def train(self, inputs, desired_outputs, epochs):
 
         self.inputs = inputs
-        N = inputs.shape[0]
+        N = inputs.shape[0]  # Number of training samples
 
-        self.loss_epoch = np.zeros(epochs)
+        self.loss_epoch = np.zeros(epochs)  # Initialize vector to contain loss values for each epoch
 
         for iter in range(0, epochs):
 
-            self.losses = [None] * N
+            self.losses = [None] * N  # Vector containing losses for each training sample. Averaged at the end of each iteration of this loop
             out = np.zeros(desired_outputs.shape)
 
             # Compute each input through the network to get overall loss and update weights
             for i in range(0, len(inputs)):
 
-                out[i] = self.calculate(inputs[i])
-                # print('Feedforward output: {}'.format(out))
+                out[i] = self.calculate(inputs[i])  # Feedforward output for the ith input
 
-                self.calculateloss(desired_outputs[i], out[i])
+                self.calculateloss(desired_outputs[i], out[i])  # Calculate loss for the ith input. store in self.loss
                 self.losses[i] = self.loss
-                # print('Loss before update: {}'.format(losses[i]))
 
-                self.out_deltas = np.zeros(len(self.layers[-1].neurons))
-                hidden_deltas = np.zeros([self.num_neurons, self.num_hidden_layers])
+                self.out_deltas = np.zeros(len(self.layers[-1].neurons))  # Initialize vector for deltas in output neurons
+                hidden_deltas = np.zeros([self.num_neurons, self.num_hidden_layers])  # "" matrix "" hidden-layer neurons
 
                 # Output layer deltas
                 for out_neuron in range(len(self.layers[-1].neurons)):
 
-                    if len(desired_outputs.shape) > 1:  # If we have more than one input/one output in the training set
-                        self.out_deltas[out_neuron] = self.loss_derivative(desired_outputs[:, out_neuron], out[:, out_neuron]) * self.layers[-1].neurons[out_neuron].d_out_d_net
+                    if len(desired_outputs.shape) > 1:  # If the output consists of more than one neuron
+                        self.out_deltas[out_neuron] = self.loss_derivative(desired_outputs[i, out_neuron], out[i, out_neuron]) * self.layers[-1].neurons[out_neuron].d_out_d_net
                     else:
-                        self.out_deltas[out_neuron] = self.loss_derivative(desired_outputs, out) * self.layers[-1].neurons[out_neuron].d_out_d_net
+                        self.out_deltas[out_neuron] = self.loss_derivative(desired_outputs[i], out[i]) * self.layers[-1].neurons[out_neuron].d_out_d_net
 
                 # Hidden layer deltas
                 for hidden_layer in range(self.num_hidden_layers-1, -1, -1):  # Work backwards from output layer
@@ -237,13 +238,13 @@ class NeuralNetwork:
                             out_weights = np.zeros(len(self.layers[-1].neurons))
 
                             for out_neuron in range(len(self.layers[-1].neurons)):
+
                                 # Weights leaving each neuron in the final hidden layer are the "hidden_neuron"-th weight
                                 # entering each output neuron. For example, for 3 hidden neurons and 2 output units, the "top"
                                 # weight entering each of the output neurons will be used for the deltas in the first hidden unit.
                                 # For the second hidden neuron, the "middle" weights entering each output neuron will be used
                                 # for the deltas in the second hidden neuron, and so on.
                                 out_weights[out_neuron] = self.layers[-1].neurons[out_neuron].weights[hidden_neuron]
-
 
                             hidden_deltas[hidden_neuron, hidden_layer] = phi_prime * np.dot(self.out_deltas, out_weights)
 
@@ -257,7 +258,9 @@ class NeuralNetwork:
 
                             hidden_deltas[hidden_neuron, hidden_layer] = phi_prime * np.dot(prev_layer_weights, prev_layer_deltas)
 
-                self.update_weights(hidden_deltas, inputs[i])
+                self.update_weights(hidden_deltas, inputs[i])  # Update weights
 
-            print(self.losses)
-            self.loss_epoch[iter] = np.mean(self.losses)
+            self.loss_epoch[iter] = np.mean(self.losses)  # Add loss value to vector
+
+
+
