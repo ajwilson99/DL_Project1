@@ -68,6 +68,7 @@ class FullyConnectedLayer:
 
         # Iterate through each neuron (inefficient...)
         for neuron in range(0, self.num_neurons):
+
             # Get indices for weight array at this iteration's neuron
             n_indices = np.linspace(neuron * self.num_inputs, neuron * self.num_inputs + (self.num_inputs - 1),
                                     self.num_inputs).astype(int)
@@ -92,18 +93,25 @@ class FullyConnectedLayer:
 
 class NeuralNetwork:
 
-    def __init__(self, num_hidden_layers, num_neurons, activations, num_inputs, loss_function, learning_rate):
+    def __init__(self, parameters):
 
-        self.num_hidden_layers = num_hidden_layers
-        self.num_neurons = num_neurons
+        self.num_hidden_layers = parameters['num hidden layers']
+
+        if parameters['num hidden layers'] == 0:
+            self.num_neurons = parameters['num inputs']
+
+        else:
+            self.num_neurons = parameters['num neurons']
+
+        self.num_outputs = parameters['num outputs']
 
         # Make sure the number of chosen activation functions is equal to the number of hidden layers + 1 (for the output layer)
-        assert(len(activations) == (num_hidden_layers + 1))
+        assert(len(parameters['activations']) == (parameters['num hidden layers'] + 1))
 
-        self.activations = activations
-        self.num_inputs = num_inputs
-        self.loss_function = loss_function
-        self.learning_rate = learning_rate
+        self.activations = parameters['activations']
+        self.num_inputs = parameters['num inputs']
+        self.loss_function = parameters['loss function']
+        self.learning_rate = parameters['learning rate']
 
         # Initialize layers and weights
         self.layers = [None] * (self.num_hidden_layers + 1)
@@ -120,7 +128,8 @@ class NeuralNetwork:
                 self.layers[l] = FullyConnectedLayer(self.num_neurons, self.activations[l], self.num_neurons, self.learning_rate)
 
         # Output layer
-        self.layers[-1] = FullyConnectedLayer(num_neurons = 1, activation = self.activations[-1],
+
+        self.layers[-1] = FullyConnectedLayer(num_neurons = parameters['num outputs'], activation = self.activations[-1],
                                          num_inputs = self.num_neurons, learning_rate = self.learning_rate)
 
     # Feedforward
@@ -138,27 +147,29 @@ class NeuralNetwork:
     def calculateloss(self, desired_output, actual_output):
 
         if self.loss_function == "squared error":
-            self.loss = (1 / 2) * ((desired_output - actual_output)**2)
+            self.loss = (1 / 2) * np.sum((desired_output - actual_output)**2)
             return self.loss
 
         elif self.loss_function == "binary cross entropy":
-            self.loss = (actual_output * np.log(desired_output) + (1 - actual_output) * np.log(1 - desired_output))
+            self.loss = np.sum(actual_output * np.log(desired_output) + (1 - actual_output) * np.log(1 - desired_output))
             return self.loss
 
     def loss_derivative(self, desired_output, actual_output):
 
         if self.loss_function == "squared error":
-            self.loss_deriv = -(desired_output - actual_output)
+            self.loss_deriv = -np.sum(desired_output - actual_output)
             return self.loss_deriv
 
         elif self.loss_function == "binary cross entropy":
-            self.loss_deriv = (-(actual_output / desired_output) + ((1 - actual_output)/(1 - desired_output)))
+            self.loss_deriv = np.sum(-(actual_output / desired_output) + ((1 - actual_output)/(1 - desired_output)))
 
-    def update_weights(self, deltas):
+    def update_weights(self, deltas, input):
 
         num_total_layers = len(self.layers)
+
         # Iterate through each layer
         for layer in range(0, num_total_layers):
+
             # Iterate through each neuron to update its input weights
             for neur in range(0, len(self.layers[layer].neurons)):
 
@@ -170,60 +181,83 @@ class NeuralNetwork:
 
                 if layer == 0:
 
-                    self.layers[layer].neurons[neur].weights -= self.learning_rate * (delta * self.input)
+                    self.layers[layer].neurons[neur].weights -= self.learning_rate * (delta * input)  # Weights
+                    self.layers[layer].neurons[neur].bias -= self.learning_rate * (delta * 1)
 
                 else:
                     outs = self.layers[layer - 1].layer_out
+
                     self.layers[layer].neurons[neur].weights -= self.learning_rate * (delta * outs)
+                    self.layers[layer].neurons[neur].weights -= self.learning_rate * (delta * 1)
 
     # One iteration of gradient descent
-    def train(self, input, desired_output):
+    def train(self, inputs, desired_outputs, epochs):
 
-        # "inputs" variable should be the entire data set - avoid "for" loop in the main function in main.py
-        self.input = input
-        new_output = self.calculate(input)
-        new_loss = self.calculateloss(desired_output, new_output)
+        self.inputs = inputs
+        N = inputs.shape[0]
 
-        self.out_deltas = np.zeros(len(self.layers[-1].neurons))
-        hidden_deltas = np.zeros([self.num_neurons, self.num_hidden_layers])
+        self.loss_epoch = np.zeros(epochs)
 
-        # Output layer deltas
-        for out_neuron in range(len(self.layers[-1].neurons)):
-            self.out_deltas[out_neuron] = self.loss_derivative(desired_output, new_output) * self.layers[-1].neurons[out_neuron].d_out_d_net
+        for iter in range(0, epochs):
 
-        # Hidden layer deltas
-        for hidden_layer in range(self.num_hidden_layers-1, -1, -1):  # Work backwards from output layer
+            self.losses = [None] * N
+            out = np.zeros(desired_outputs.shape)
 
-            for hidden_neuron in range(0, self.num_neurons):  # Iterate through each neuron in the layer, starting from the "top"
+            # Compute each input through the network to get overall loss and update weights
+            for i in range(0, len(inputs)):
 
-                # Derivative of activation function for this neuron
-                phi_prime = self.layers[hidden_layer].neurons[hidden_neuron].d_out_d_net
+                out[i] = self.calculate(inputs[i])
+                # print('Feedforward output: {}'.format(out))
 
-                if hidden_layer == (self.num_hidden_layers - 1):  # If we need the weights from the output layer, ...
+                self.calculateloss(desired_outputs[i], out[i])
+                self.losses[i] = self.loss
+                # print('Loss before update: {}'.format(losses[i]))
 
-                    out_weights = np.zeros(len(self.layers[-1].neurons))
+                self.out_deltas = np.zeros(len(self.layers[-1].neurons))
+                hidden_deltas = np.zeros([self.num_neurons, self.num_hidden_layers])
 
-                    for out_neuron in range(len(self.layers[-1].neurons)):
-                        # Weights leaving each neuron in the final hidden layer are the "hidden_neuron"-th weight
-                        # entering each output neuron. For example, for 3 hidden neurons and 2 output units, the "top"
-                        # weight entering each of the output neurons will be used for the deltas in the first hidden unit.
-                        # For the second hidden neuron, the "middle" weights entering each output neuron will be used
-                        # for the deltas in the second hidden neuron, and so on.
-                        out_weights[out_neuron] = self.layers[-1].neurons[out_neuron].weights[hidden_neuron]
+                # Output layer deltas
+                for out_neuron in range(len(self.layers[-1].neurons)):
+
+                    if len(desired_outputs.shape) > 1:  # If we have more than one input/one output in the training set
+                        self.out_deltas[out_neuron] = self.loss_derivative(desired_outputs[:, out_neuron], out[:, out_neuron]) * self.layers[-1].neurons[out_neuron].d_out_d_net
+                    else:
+                        self.out_deltas[out_neuron] = self.loss_derivative(desired_outputs, out) * self.layers[-1].neurons[out_neuron].d_out_d_net
+
+                # Hidden layer deltas
+                for hidden_layer in range(self.num_hidden_layers-1, -1, -1):  # Work backwards from output layer
+
+                    for hidden_neuron in range(0, self.num_neurons):  # Iterate through each neuron in the layer, starting from the "top"
+
+                        # Derivative of activation function for this neuron
+                        phi_prime = self.layers[hidden_layer].neurons[hidden_neuron].d_out_d_net
+
+                        if hidden_layer == (self.num_hidden_layers - 1):  # If we need the weights from the output layer, ...
+
+                            out_weights = np.zeros(len(self.layers[-1].neurons))
+
+                            for out_neuron in range(len(self.layers[-1].neurons)):
+                                # Weights leaving each neuron in the final hidden layer are the "hidden_neuron"-th weight
+                                # entering each output neuron. For example, for 3 hidden neurons and 2 output units, the "top"
+                                # weight entering each of the output neurons will be used for the deltas in the first hidden unit.
+                                # For the second hidden neuron, the "middle" weights entering each output neuron will be used
+                                # for the deltas in the second hidden neuron, and so on.
+                                out_weights[out_neuron] = self.layers[-1].neurons[out_neuron].weights[hidden_neuron]
 
 
-                    hidden_deltas[hidden_neuron, hidden_layer] = phi_prime * np.dot(self.out_deltas, out_weights)
+                            hidden_deltas[hidden_neuron, hidden_layer] = phi_prime * np.dot(self.out_deltas, out_weights)
 
-                else:
+                        else:
 
-                    prev_layer_deltas = hidden_deltas[:, hidden_layer + 1]
-                    prev_layer_weights = np.zeros(len(self.layers[hidden_layer + 1].neurons))
+                            prev_layer_deltas = hidden_deltas[:, hidden_layer + 1]
+                            prev_layer_weights = np.zeros(len(self.layers[hidden_layer + 1].neurons))
 
-                    for w in range(0, len(self.layers[hidden_layer + 1].neurons)):
-                        prev_layer_weights[w] = self.layers[hidden_layer + 1].neurons[w].weights[hidden_neuron]
+                            for w in range(0, len(self.layers[hidden_layer + 1].neurons)):
+                                prev_layer_weights[w] = self.layers[hidden_layer + 1].neurons[w].weights[hidden_neuron]
 
-                    hidden_deltas[hidden_neuron, hidden_layer] = phi_prime * np.dot(prev_layer_weights, prev_layer_deltas)
+                            hidden_deltas[hidden_neuron, hidden_layer] = phi_prime * np.dot(prev_layer_weights, prev_layer_deltas)
 
-        print("Old weights neuron 0 hidden layer 1: {}".format(self.layers[0].neurons[0].weights))
-        self.update_weights(hidden_deltas)
-        print("New weights neuron 0 hidden layer 1: {}".format(self.layers[0].neurons[0].weights))
+                self.update_weights(hidden_deltas, inputs[i])
+
+            print(self.losses)
+            self.loss_epoch[iter] = np.mean(self.losses)
