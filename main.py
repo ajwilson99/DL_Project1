@@ -11,6 +11,7 @@ def main():
 
     script = str(sys.argv[1])
 
+    epochs = 3000
     # script = 'example'
 
     if script == "example":
@@ -79,7 +80,7 @@ def main():
 
         nn = NeuralNetwork(parameters)
 
-        nn.train(x, y, epochs=2000)
+        nn.train(x, y, epochs=epochs)
 
         # Plotting
         plt.plot(nn.loss_epoch)
@@ -129,10 +130,10 @@ def main():
         }
 
         nn_single = NeuralNetwork(parameters_perceptron)
-        nn_single.train(x, y, epochs=2000)
+        nn_single.train(x, y, epochs=epochs)
 
         nn_multi = NeuralNetwork(parameters_multilayer_perceptron)
-        nn_multi.train(x, y, epochs=2000)
+        nn_multi.train(x, y, epochs=epochs)
 
         # Plotting
         plt.plot(nn_single.loss_epoch, label='Single Perceptron')
