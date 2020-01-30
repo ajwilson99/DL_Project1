@@ -28,7 +28,7 @@ def main():
             "num neurons" : 2,
             "activations": ['sigmoid'] * 2,
             "learning rate": 0.5,
-            "loss function": 'binary cross entropy'
+            "loss function": 'squared error'
         }
 
         nn = NeuralNetwork(parameters)
